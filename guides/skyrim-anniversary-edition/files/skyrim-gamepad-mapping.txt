@@ -1,0 +1,2 @@
+# 8BitDo Ultimate 2 Wireless — raw-HID layout from SDL_GameControllerDB, re-keyed to Wine's GUID.
+03006042c82d00001260000001000000,8BitDo Ultimate 2,a:b0,b:b1,x:b3,y:b4,back:b10,guide:b12,start:b11,leftstick:b13,rightstick:b14,leftshoulder:b6,rightshoulder:b7,dpup:h0.1,dpdown:h0.4,dpleft:h0.8,dpright:h0.2,leftx:a0,lefty:a1,rightx:a2,righty:a3,lefttrigger:a5,righttrigger:a4,platform:Mac OS X,

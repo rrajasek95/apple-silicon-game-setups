@@ -1,0 +1,25 @@
+# macOS
+.DS_Store
+.AppleDouble
+._*
+
+# Never commit game assets, binaries, or redistributables
+*.exe
+*.bin
+*.dll
+*.cab
+*.msu
+*.iso
+*.dmg
+*.bsa
+*.esm
+*.esp
+
+# Wine prefixes / build trees (huge, machine-specific)
+*.wineprefix/
+drive_c/
+build.w64/
+
+# Editor noise
+*.swp
+*~

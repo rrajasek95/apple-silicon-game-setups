@@ -1,0 +1,65 @@
+diff --git a/src/d3d11/d3d11_device.cpp b/src/d3d11/d3d11_device.cpp
+index 863a9a3..a99406e 100644
+--- a/src/d3d11/d3d11_device.cpp
++++ b/src/d3d11/d3d11_device.cpp
+@@ -1892,7 +1892,7 @@ namespace dxvk {
+     enabled.core.features.dualSrcBlend                            = VK_TRUE;
+     enabled.core.features.fillModeNonSolid                        = VK_TRUE;
+     enabled.core.features.fullDrawIndexUint32                     = VK_TRUE;
+-    enabled.core.features.geometryShader                          = VK_TRUE;
++    enabled.core.features.geometryShader                          = supported.core.features.geometryShader;
+     enabled.core.features.imageCubeArray                          = VK_TRUE;
+     enabled.core.features.independentBlend                        = VK_TRUE;
+     enabled.core.features.multiViewport                           = VK_TRUE;
+@@ -1901,7 +1901,7 @@ namespace dxvk {
+     enabled.core.features.sampleRateShading                       = VK_TRUE;
+     enabled.core.features.samplerAnisotropy                       = supported.core.features.samplerAnisotropy;
+     enabled.core.features.shaderClipDistance                      = VK_TRUE;
+-    enabled.core.features.shaderCullDistance                      = VK_TRUE;
++    enabled.core.features.shaderCullDistance                      = supported.core.features.shaderCullDistance;
+     enabled.core.features.shaderImageGatherExtended               = VK_TRUE;
+     enabled.core.features.textureCompressionBC                    = VK_TRUE;
+ 
+@@ -1914,8 +1914,8 @@ namespace dxvk {
+     enabled.extCustomBorderColor.customBorderColors               = supported.extCustomBorderColor.customBorderColorWithoutFormat;
+     enabled.extCustomBorderColor.customBorderColorWithoutFormat   = supported.extCustomBorderColor.customBorderColorWithoutFormat;
+ 
+-    enabled.extTransformFeedback.transformFeedback                = VK_TRUE;
+-    enabled.extTransformFeedback.geometryStreams                  = VK_TRUE;
++    enabled.extTransformFeedback.transformFeedback                = supported.extTransformFeedback.transformFeedback;
++    enabled.extTransformFeedback.geometryStreams                  = supported.extTransformFeedback.geometryStreams;
+ 
+     enabled.extVertexAttributeDivisor.vertexAttributeInstanceRateDivisor      = supported.extVertexAttributeDivisor.vertexAttributeInstanceRateDivisor;
+     enabled.extVertexAttributeDivisor.vertexAttributeInstanceRateZeroDivisor  = supported.extVertexAttributeDivisor.vertexAttributeInstanceRateZeroDivisor;
+diff --git a/src/dxvk/dxvk_adapter.cpp b/src/dxvk/dxvk_adapter.cpp
+index 7c0e79f..6c2dd2a 100644
+--- a/src/dxvk/dxvk_adapter.cpp
++++ b/src/dxvk/dxvk_adapter.cpp
+@@ -174,7 +174,6 @@ namespace dxvk {
+         && CHECK_FEATURE_NEED(core.features.fullDrawIndexUint32)
+         && CHECK_FEATURE_NEED(core.features.imageCubeArray)
+         && CHECK_FEATURE_NEED(core.features.independentBlend)
+-        && CHECK_FEATURE_NEED(core.features.geometryShader)
+         && CHECK_FEATURE_NEED(core.features.tessellationShader)
+         && CHECK_FEATURE_NEED(core.features.sampleRateShading)
+         && CHECK_FEATURE_NEED(core.features.dualSrcBlend)
+@@ -254,7 +253,6 @@ namespace dxvk {
+         && CHECK_FEATURE_NEED(extNonSeamlessCubeMap.nonSeamlessCubeMap)
+         && CHECK_FEATURE_NEED(extRobustness2.robustBufferAccess2)
+         && CHECK_FEATURE_NEED(extRobustness2.robustImageAccess2)
+-        && CHECK_FEATURE_NEED(extRobustness2.nullDescriptor)
+         && CHECK_FEATURE_NEED(extShaderModuleIdentifier.shaderModuleIdentifier)
+         && CHECK_FEATURE_NEED(extShaderStencilExport)
+         && CHECK_FEATURE_NEED(extSwapchainColorSpace)
+@@ -385,9 +383,9 @@ namespace dxvk {
+     // Require robustBufferAccess2 since we use the robustness alignment
+     // info in a number of places, and require null descriptor support
+     // since we no longer have a fallback for those in the backend
+-    enabledFeatures.extRobustness2.robustBufferAccess2 = VK_TRUE;
++    enabledFeatures.extRobustness2.robustBufferAccess2 = m_deviceFeatures.extRobustness2.robustBufferAccess2;
+     enabledFeatures.extRobustness2.robustImageAccess2 = m_deviceFeatures.extRobustness2.robustImageAccess2;
+-    enabledFeatures.extRobustness2.nullDescriptor = VK_TRUE;
++    enabledFeatures.extRobustness2.nullDescriptor = m_deviceFeatures.extRobustness2.nullDescriptor;
+ 
+     // We use this to avoid decompressing SPIR-V shaders in some situations
+     enabledFeatures.extShaderModuleIdentifier.shaderModuleIdentifier =
