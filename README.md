@@ -47,9 +47,38 @@ If you're an AI assistant helping a user set up a game:
 New guides and fixes welcome — see [CONTRIBUTING.md](CONTRIBUTING.md) and the
 [guide template](template/GUIDE_TEMPLATE.md).
 
+## Acknowledgements & supporting these projects
+
+None of this works without the open-source projects these guides stand on — built and maintained
+largely by volunteers. **If a guide here saved you hours, please give back to the people who made it
+possible:** sponsor or donate if you can, and contribute code, bug reports, and data (e.g. a new
+controller mapping) if you can't.
+
+**The open-source stack** (please sponsor / contribute):
+- [Wine](https://www.winehq.org/) — the compatibility layer everything builds on ([donate](https://www.winehq.org/donate)).
+- [DXVK](https://github.com/doitsujin/dxvk) — Direct3D → Vulkan.
+- [MoltenVK](https://github.com/KhronosGroup/MoltenVK) — Vulkan → Metal (Khronos / The Brenwill Workshop).
+- [SDL](https://www.libsdl.org/) + [SDL_GameControllerDB](https://github.com/mdqinc/SDL_GameControllerDB) — input. **If you map a new controller, submit it upstream** so the next person gets it for free.
+- [FAudio](https://github.com/FNA-XNA/FAudio) — Wine's XAudio2 implementation.
+- [Gcenx's macOS Wine builds](https://github.com/Gcenx/macOS_Wine_builds) — the maintained macOS packaging that makes any of this approachable.
+- [SDL2 Gamepad Tool](https://github.com/General-Arcade/sdl2-gamepad-tool), [cabextract](https://www.cabextract.org.uk/), and the wider Wine / Proton community.
+
+**Support the official developers, too:**
+- **Buy your games from official stores** (GOG, Steam, …). These guides are about *playing what you own*
+  on hardware the publisher didn't target — never about avoiding paying for it. Developers earn nothing
+  if you don't buy the game.
+- **Consider [CrossOver](https://www.codeweavers.com/crossover) (CodeWeavers).** CodeWeavers is the
+  largest funder of upstream Wine — buying CrossOver directly pays for the Wine improvements this entire
+  repo depends on. The free stack and the commercial one aren't rivals here; one funds the other.
+- **[Apple's Game Porting Toolkit](https://developer.apple.com/games/game-porting-toolkit/)** and
+  MoltenVK advance native Mac gaming — engaging with them helps the whole platform.
+
+Open source is sustained by the people who give back. Be one of them.
+
 ## Disclaimer
 
 These guides assume you **legally own** the games. They involve no piracy, DRM circumvention, or
 redistribution of game assets. Microsoft redistributables (DirectX, UCRT) are obtained from official
-Microsoft packages. Wine/DXVK/MoltenVK are open-source. Use at your own risk; nothing here is
-affiliated with the game publishers, Apple, or CodeWeavers.
+Microsoft packages. The open-source components above retain their respective licenses. Use at your own
+risk; nothing here is affiliated with the game publishers, Apple, CodeWeavers, or the projects credited
+above.
