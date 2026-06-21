@@ -1,0 +1,82 @@
+# Patch for Wine 11.10 dlls/winemac.drv to make DXMT-required symbols resolvable.
+# Exposes the Metal-view functions (visibility default) + adds a CrossOver-compatible
+# 'macdrv_functions' struct. See dxmt-v2-investigation.md for the (unresolved) unixlib
+# symbol-visibility blocker that remains.
+# Apply from the wine source root:  patch -p1 < this.patch
+
+diff --color -ru a/dlls/winemac.drv/macdrv.h b/dlls/winemac.drv/macdrv.h
+--- a/dlls/winemac.drv/macdrv.h	2026-06-21 14:39:43
++++ b/dlls/winemac.drv/macdrv.h	2026-06-21 14:39:43
+@@ -206,10 +206,10 @@
+ 
+ extern struct macdrv_client_surface *macdrv_client_surface_create(HWND hwnd);
+ 
+-extern struct macdrv_win_data *get_win_data(HWND hwnd);
+-extern void release_win_data(struct macdrv_win_data *data);
++extern __attribute__((visibility("default"))) struct macdrv_win_data *get_win_data(HWND hwnd);
++extern __attribute__((visibility("default"))) void release_win_data(struct macdrv_win_data *data);
+ extern void init_win_context(void);
+-extern macdrv_window macdrv_get_cocoa_window(HWND hwnd, BOOL require_on_screen);
++extern __attribute__((visibility("default"))) macdrv_window macdrv_get_cocoa_window(HWND hwnd, BOOL require_on_screen);
+ extern RGNDATA *get_region_data(HRGN hrgn, HDC hdc_lptodp);
+ extern void activate_on_following_focus(void);
+ 
+diff --color -ru a/dlls/winemac.drv/macdrv_cocoa.h b/dlls/winemac.drv/macdrv_cocoa.h
+--- a/dlls/winemac.drv/macdrv_cocoa.h	2026-06-21 14:39:43
++++ b/dlls/winemac.drv/macdrv_cocoa.h	2026-06-21 14:39:43
+@@ -522,11 +522,11 @@
+ extern void macdrv_set_view_hidden(macdrv_view v, bool hidden);
+ extern void macdrv_add_view_opengl_context(macdrv_view v, macdrv_opengl_context c);
+ extern void macdrv_remove_view_opengl_context(macdrv_view v, macdrv_opengl_context c);
+-extern macdrv_metal_device macdrv_create_metal_device(void);
+-extern void macdrv_release_metal_device(macdrv_metal_device d);
+-extern macdrv_metal_view macdrv_view_create_metal_view(macdrv_view v, macdrv_metal_device d);
+-extern macdrv_metal_layer macdrv_view_get_metal_layer(macdrv_metal_view v);
+-extern void macdrv_view_release_metal_view(macdrv_metal_view v);
++extern __attribute__((visibility("default"))) macdrv_metal_device macdrv_create_metal_device(void);
++extern __attribute__((visibility("default"))) void macdrv_release_metal_device(macdrv_metal_device d);
++extern __attribute__((visibility("default"))) macdrv_metal_view macdrv_view_create_metal_view(macdrv_view v, macdrv_metal_device d);
++extern __attribute__((visibility("default"))) macdrv_metal_layer macdrv_view_get_metal_layer(macdrv_metal_view v);
++extern __attribute__((visibility("default"))) void macdrv_view_release_metal_view(macdrv_metal_view v);
+ extern bool macdrv_get_view_backing_size(macdrv_view v, int backing_size[2]);
+ extern void macdrv_set_view_backing_size(macdrv_view v, const int backing_size[2]);
+ extern uint32_t macdrv_window_background_color(void);
+diff --color -ru a/dlls/winemac.drv/window.c b/dlls/winemac.drv/window.c
+--- a/dlls/winemac.drv/window.c	2026-06-21 14:39:43
++++ b/dlls/winemac.drv/window.c	2026-06-21 14:39:43
+@@ -2163,3 +2163,35 @@
+     pthread_mutex_init(&win_data_mutex, &attr);
+     pthread_mutexattr_destroy(&attr);
+ }
++
++/* DXMT compatibility shim:
++ * CrossOver's winemac.drv exports a global `macdrv_functions` struct that DXMT resolves via
++ * dlsym(RTLD_DEFAULT, "macdrv_functions") to reach the Metal-view API. Upstream Wine has no such
++ * struct, so provide a layout-compatible one here (field order MUST match DXMT's macdrv_functions_t). */
++struct dxmt_macdrv_functions_compat {
++    void (*macdrv_init_display_devices)(BOOL);
++    struct macdrv_win_data *(*get_win_data)(HWND hwnd);
++    void (*release_win_data)(struct macdrv_win_data *data);
++    macdrv_window (*macdrv_get_cocoa_window)(HWND hwnd, BOOL require_on_screen);
++    macdrv_metal_device (*macdrv_create_metal_device)(void);
++    void (*macdrv_release_metal_device)(macdrv_metal_device d);
++    macdrv_metal_view (*macdrv_view_create_metal_view)(macdrv_view v, macdrv_metal_device d);
++    macdrv_metal_layer (*macdrv_view_get_metal_layer)(macdrv_metal_view v);
++    void (*macdrv_view_release_metal_view)(macdrv_metal_view v);
++    void (*on_main_thread)(void *b);
++};
++
++__attribute__((visibility("default")))
++struct dxmt_macdrv_functions_compat macdrv_functions =
++{
++    NULL,                            /* macdrv_init_display_devices (not present upstream) */
++    get_win_data,
++    release_win_data,
++    macdrv_get_cocoa_window,
++    macdrv_create_metal_device,
++    macdrv_release_metal_device,
++    macdrv_view_create_metal_view,
++    macdrv_view_get_metal_layer,
++    macdrv_view_release_metal_view,
++    NULL,                            /* on_main_thread (unused by DXMT's metal-view path) */
++};

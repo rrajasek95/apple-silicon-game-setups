@@ -52,8 +52,10 @@ avoids*. **✅** canonical (use this) · **⚠️** works with a caveat · **❌
 | **D3D11→Vulkan** | upstream DXVK 2.x | ❌ | won't enumerate MoltenVK (force-requires `geometryShader`, `nullDescriptor`, `transformFeedback`, …) → feature level 0 |
 | | dxvk-macOS fork 1.10.3 | ❌ | has the relaxations but too old to run Skyrim AE |
 | | Apple **D3DMetal** (GPTK) | ❌ | ABI-welded to Wine 7.7; can't graft onto Wine 11 |
-| | **DXVK 2.3.1 + feature-relax patch** | ✅ | reaches `FEATURE_LEVEL_11_0` on MoltenVK |
-| **Vulkan→Metal** | **MoltenVK 1.4.1** | ✅ | |
+| | **DXVK 2.3.1 + feature-relax patch** | ✅ | reaches `FEATURE_LEVEL_11_0` on MoltenVK (what this guide uses) |
+| **D3D11→Metal** (1 hop) | DXMT (open-source) | ⚠️ | spike got it to a D3D11 device at FL11_0 on patched free Wine, but a unixlib symbol-visibility wall blocks the final step — see [dxmt-v2-investigation.md](dxmt-v2-investigation.md) |
+| | Apple D3DMetal | ❌ | proprietary; CrossOver/GPTK-only, can't graft onto free Wine |
+| **Vulkan→Metal** | **MoltenVK 1.4.1** | ✅ | (only needed for the DXVK path) |
 | **Music / xWMA** | Wine GStreamer (builtin) | ❌ | no WMA decoder → `CoCreateInstance` fails → crash in `mfplat.dll` at main menu |
 | | **native MF stack + `wmadmod.dll`** | ✅ | |
 | **SFX / 3D audio** | Wine **FAudio** (builtin xaudio2) | ⚠️ | plays, but `GetDeviceDetails` reports stereo output as 5.1 → dialogue collapses as you turn from NPCs |
