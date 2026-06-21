@@ -23,21 +23,51 @@ Runs GOG Skyrim AE with **no CrossOver** — upstream Wine + a custom-patched DX
 Foundation + native XAudio2/X3DAudio + a properly-mapped controller. Reaches gameplay, New Game works,
 controller and spatial audio are correct.
 
-## Components
+## Canonical setup (verified known-good)
 
-| Layer | What | Version / source |
+This is the exact combination verified working (see `last_verified` above). The versions were **not
+chosen arbitrarily** — deviating from any line reintroduces the failure shown in the compatibility
+matrix below. If you change nothing else, use exactly these:
+
+| Layer | Use exactly | Source |
 |---|---|---|
-| Engine | Wine (staging), x86_64 under Rosetta 2 | **11.10**, [Gcenx `macOS_Wine_builds`](https://github.com/Gcenx/macOS_Wine_builds) |
-| D3D11 → Vulkan | **custom-patched DXVK** | 2.3.1 + [`files/dxvk-2.3.1-moltenvk-feature-relax.patch`](files/dxvk-2.3.1-moltenvk-feature-relax.patch) |
-| Vulkan → Metal | MoltenVK | **1.4.1** (swapped into the Wine app) |
-| Audio (music/xWMA) | native **Media Foundation** + `wmadmod.dll` | Windows install / Win7 SP1 KB976932 |
-| Audio (SFX/3D) | native **XAudio2 2.7** + **X3DAudio1_7** | DirectX June 2010 redist |
-| Input | SDL controller backend + custom mapping | [`files/skyrim-gamepad-mapping.txt`](files/skyrim-gamepad-mapping.txt) |
+| Engine | Wine **Staging 11.10** (x86_64 / Rosetta 2) | [Gcenx `macOS_Wine_builds`](https://github.com/Gcenx/macOS_Wine_builds) |
+| D3D11→Vulkan | **DXVK 2.3.1** + feature-relax patch | [`files/dxvk-2.3.1-moltenvk-feature-relax.patch`](files/dxvk-2.3.1-moltenvk-feature-relax.patch) |
+| Vulkan→Metal | **MoltenVK 1.4.1** | swapped into the Wine app |
+| Music / xWMA | native **Media Foundation** + `wmadmod.dll` | Windows install / Win7 SP1 KB976932 |
+| SFX / 3D audio | native **XAudio2 2.7** + **X3DAudio1_7** | DirectX **June 2010** redist |
+| Install path | short — game launched as `C:\Skyrim\SkyrimSE.exe` | symlink, step 6 |
+| Input | controller via Wine SDL backend, mapping keyed to **Wine's** GUID | [`files/skyrim-gamepad-mapping.txt`](files/skyrim-gamepad-mapping.txt) |
 
-**Why these:** Wine 11 (not 7.x) clears Skyrim's engine-init crash; Metal lacks several Vulkan features
-upstream DXVK force-requires, so DXVK is patched to relax them; Skyrim's music is xWMA which Wine's
-GStreamer can't decode, so Media Foundation is made native with a real WMA codec; Wine's built-in
-FAudio misreports the audio device as 5.1, so XAudio2/X3DAudio are made native to fix spatial audio.
+## Compatibility matrix
+
+Everything tried per layer and the outcome — so you know not just what to use but *what each choice
+avoids*. **✅** canonical (use this) · **⚠️** works with a caveat · **❌** broken · **❓** untested.
+
+| Layer | Option | | Why |
+|---|---|:--:|---|
+| **Wine** | 7.7 — Whisky / Apple GPTK / CrossOver-22 | ❌ | engine-init crash (`SkyrimSE.exe+0xE4B479`) before the menu |
+| | 8.x – 10.x | ❓ | not tested — Gcenx ships only 11.x for macOS (an intermediate version *might* also work) |
+| | **Staging 11.10 (Gcenx)** | ✅ | engine init works |
+| **D3D11→Vulkan** | upstream DXVK 2.x | ❌ | won't enumerate MoltenVK (force-requires `geometryShader`, `nullDescriptor`, `transformFeedback`, …) → feature level 0 |
+| | dxvk-macOS fork 1.10.3 | ❌ | has the relaxations but too old to run Skyrim AE |
+| | Apple **D3DMetal** (GPTK) | ❌ | ABI-welded to Wine 7.7; can't graft onto Wine 11 |
+| | **DXVK 2.3.1 + feature-relax patch** | ✅ | reaches `FEATURE_LEVEL_11_0` on MoltenVK |
+| **Vulkan→Metal** | **MoltenVK 1.4.1** | ✅ | |
+| **Music / xWMA** | Wine GStreamer (builtin) | ❌ | no WMA decoder → `CoCreateInstance` fails → crash in `mfplat.dll` at main menu |
+| | **native MF stack + `wmadmod.dll`** | ✅ | |
+| **SFX / 3D audio** | Wine **FAudio** (builtin xaudio2) | ⚠️ | plays, but `GetDeviceDetails` reports stereo output as 5.1 → dialogue collapses as you turn from NPCs |
+| | native X3DAudio1_7 only (keep FAudio xaudio2) | ❌ | not enough — XAudio2 still builds the 5.1 mastering voice |
+| | **native XAudio2 2.7 + X3DAudio1_7** | ✅ | stereo mastering voice; X3DAudio pans correctly within it |
+| **Install path** | long (`C:\GOG Games\Skyrim Anniversary Edition\…`) | ❌ | the absolute asset path exceeds Skyrim's 116-byte buffer → New Game crash (`strcat_s`, `0xC0000417`) |
+| | **short (`C:\Skyrim`, via symlink)** | ✅ | the absolute path now fits the buffer |
+| **Input** | trackpad / mouse | ⚠️ | Wine's Mac driver has no raw-input mouse capture; camera is jittery even with acceleration off |
+| | controller, mapping from an MFi-based tool | ❌ | the tool's GUID/layout (Apple vendor `05ac…`) never matches Wine's raw-HID GUID → scrambled |
+| | **controller, mapping keyed to Wine's SDL GUID** | ✅ | correct XInput mapping |
+
+**Why these:** Wine 11 (not 7.x) clears the engine-init crash; Metal lacks Vulkan features upstream DXVK
+force-requires, so DXVK is patched; Skyrim's music is xWMA which Wine's GStreamer can't decode, so MF is
+made native; Wine's FAudio misreports the device as 5.1, so XAudio2/X3DAudio are made native.
 
 ## Prerequisites
 - The **GOG offline installer** for Skyrim AE (base game + Anniversary upgrade), installed under Wine.
@@ -172,3 +202,26 @@ controller mapping, and launches the game from the short path.
 - `dxvk-2.3.1-moltenvk-feature-relax.patch` — the DXVK source patch (real diff).
 - `dxvk.conf` — the 60 fps cap config.
 - `skyrim-gamepad-mapping.txt` — example SDL mapping (8BitDo Ultimate 2), keyed to Wine's GUID.
+
+## References
+
+**Tooling**
+- [Gcenx `macOS_Wine_builds`](https://github.com/Gcenx/macOS_Wine_builds) — the Wine 11.10 Staging build
+- [DXVK](https://github.com/doitsujin/dxvk) — D3D11→Vulkan
+- [MoltenVK](https://github.com/KhronosGroup/MoltenVK) — Vulkan→Metal
+- [SDL_GameControllerDB](https://github.com/mdqinc/SDL_GameControllerDB) — controller mapping layouts (source of the 8BitDo layout)
+- [SDL2 Gamepad Tool](https://github.com/General-Arcade/sdl2-gamepad-tool) — generates SDL mapping strings
+
+**Wine secure-CRT / path regression** (context for the New Game crash; the fix is the short path, not a Wine change)
+- WineHQ forum: [*Debugging Assistance for Skyrim SE (wine 7.{7,8} → 7.6 Reversion)*, t=36530](https://forum.winehq.org/viewtopic.php?t=36530)
+- Wine ANNOUNCE files documenting the secure-CRT string-function rework: [7.7](https://github.com/wine-mirror/wine/blob/wine-7.7/ANNOUNCE) · [7.12](https://github.com/wine-mirror/wine/blob/wine-7.12/ANNOUNCE) · [7.20](https://github.com/wine-mirror/wine/blob/wine-7.20/ANNOUNCE)
+- [Wine `ucrtbase` API reference](https://source.winehq.org/WineAPI/ucrtbase.html)
+
+**Microsoft redistributables** (you must obtain these yourself — they are *not* included in this repo)
+- **DirectX End-User Runtimes (June 2010)** — source of genuine `xaudio2_7.dll` + `x3daudio1_7.dll` ([Microsoft Download Center, id=8109](https://www.microsoft.com/en-us/download/details.aspx?id=8109))
+- **Windows 7 SP1 / KB976932** — source of `wmadmod.dll` (WMAudio Decoder DMO)
+
+**Corroborating community guides**
+- STEP: [*Linux WINE-ge GoG (non-Steam) Skyrim AE setup*](https://stepmodifications.org/forum/topic/20131-linux-wine-ge-gog-non-steam-focused-system-setup-guide/) — confirms the same GOG AE build runs on the Proton/wine-ge (CrossOver) lineage
+- r/linux_gaming: [*Wine / Proton — Raw Mouse Input*](https://www.reddit.com/r/linux_gaming/comments/9l4iyd/wine_proton_raw_mouse_input/) — Wine forwards the desktop pointer, not true raw input
+- r/skyrim: [*Guide: SSE on Linux with Wine*](https://www.reddit.com/r/skyrim/comments/8l9bez/guide_sse_on_linux_with_wine/)

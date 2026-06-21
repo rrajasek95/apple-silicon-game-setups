@@ -13,13 +13,23 @@ Guides for new games, fixes to existing ones, and version bumps are all welcome.
 
 ## Quality bar
 
-- **Every step states why.** "Set X native" is useless in a year; "Set X native because Wine's builtin
-  reports the device as 5.1 and collapses rear audio" survives version changes and transfers to other games.
-- **Troubleshooting is symptom → root cause → fix.** Help the next person diagnose, not cargo-cult.
-- **Only the path that works.** Cut the dead ends from the final guide (a short "what didn't work and
-  why" note at the end is fine if it saves someone time).
-- **No game assets, no DRM circumvention.** Microsoft redistributables come from official MS packages;
-  link, don't vendor them. Assume the reader legally owns the game.
+1. **State the rationale for every step.** Each step must describe the specific failure it prevents or
+   the mechanism it depends on, not only the action to take. State versions and behaviours, not vague
+   claims, so the step stays correct when tooling changes and transfers to similar games.
+2. **Write troubleshooting as symptom → root cause → fix.** For every issue, give the observable
+   symptom, the underlying cause, and the fix that follows from that cause. Do not list a fix without
+   its cause.
+3. **Keep only the verified path in the numbered steps.** Steps must contain only actions that are part
+   of the working setup. Record approaches that were tried and failed in the compatibility matrix or a
+   short "what didn't work and why" note — not in the steps.
+4. **Pin exact versions and record verification.** Give specific versions in the metadata block and a
+   `last_verified` date. When a particular version is required (not merely what you used), say so and
+   explain why in the compatibility matrix.
+5. **Do not include game assets or DRM circumvention.** Assume the reader legally owns the game. Do not
+   commit copyrighted game files, instructions to extract them, or any DRM bypass.
+6. **Link third-party redistributables; do not vendor them.** Obtain Microsoft and other redistributables
+   (DirectX, UCRT, codecs) from their official sources and link to them. Do not commit these binaries;
+   the `.gitignore` blocks the common extensions.
 
 ## Generalize machine-specifics
 

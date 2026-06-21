@@ -13,7 +13,7 @@ shortened the install path to `C:\Skyrim`. The detailed analysis below is retain
 ---
 
 ## One-line summary
-Starting a New Game, **Wine's builtin `ucrtbase!strcat_s` raises `STATUS_INVALID_CRUNTIME_PARAMETER` (0xC0000417)** because the destination buffer Skyrim passes is **not NUL-terminated within its declared size** — under Wine. Same call succeeds on Windows, so an **upstream Wine API** that fills/sizes this path buffer is the real culprit. `strcat_s` is just where it surfaces.
+Starting a New Game, **Wine's `ucrtbase!strcat_s` raises `STATUS_INVALID_CRUNTIME_PARAMETER` (0xC0000417)** because Skyrim builds an **absolute** asset path into a fixed **116-byte** buffer, and under Wine that path includes the full install prefix — the long `C:\GOG Games\Skyrim Anniversary Edition\…` pushes the string past 116 bytes, so `strcat_s` (correctly) aborts. `strcat_s` is the messenger; the buffer is just too small for the long path. **Shortening the install path is the fix** — see the RESOLVED note above. The analysis below is the evidence trail.
 
 ## Environment
 - Wine: **wine-staging 11.10**, x86_64 (under Rosetta 2), prefix `~/wine11-skyrim`
@@ -79,16 +79,30 @@ Path fragments on the stack around the dest buffer:
 ```
 i.e. Skyrim is **building a Blacksmith/crafting Havok behavior asset path** (`...\Blacksmith...ing ...ct.hkt`) during new-game data/behavior loading. The crash is in **path-string construction**.
 
-## Conclusion / where the real bug is
-`strcat_s` is correct. The dest buffer is non-NUL-terminated because some **upstream Wine string/path API returned a different result than Windows** (longer string, missing terminator, or different length accounting), leaving the buffer un-terminated before `strcat_s` runs. Find that API.
+## Conclusion / root cause
+`strcat_s` is behaving **correctly** — the dest buffer (`destSize=116`) genuinely has no NUL in its
+first 116 bytes because the string being assembled is **longer than 116 chars**: it's the *absolute*
+asset path `C:\GOG Games\Skyrim Anniversary Edition\Data\…\Blacksmith…behavior.hkt`. The long GOG
+install folder name is what pushes it over the limit.
 
-## Regression window (already established)
-- **Works: Wine 7.6.  Breaks: Wine 7.7+** — WineHQ forum t=36530 ("Skyrim SE 7.{7,8} -> 7.6 Reversion"). Same symptom class (cell/data load crash).
-- Secure-CRT string fns reworked across 7.7 → 7.12 (moved to ntdll, unified) → 7.20 (strcat_s error-handling). **Still present in 11.10.**
-- Only CRT line in the 7.7 ANNOUNCE: `msvcrt: Fix mbcs initialization for UTF-8 codepage` — but forcing ACP=1252 and `LC_ALL=C` did NOT fix it, so the regressing commit is likely elsewhere in the 7.6→7.7 range.
+Two facts combine:
+1. **Skyrim uses a fixed ~116-byte buffer** for this asset path (an engine limitation, present on
+   Windows too — but Windows feeds it a shorter/relative form).
+2. **Under Wine's 7.7+ path handling, Skyrim receives the full absolute path** (with the install
+   prefix) for this lookup, where on Windows it gets a shorter one.
 
-## Research leads for Wine Bugzilla / git bisect
-1. Search Bugzilla: `Skyrim strcat_s`, `STATUS_INVALID_CRUNTIME_PARAMETER`, `invalid parameter` cell/load.
-2. Bisect Wine 7.6→7.7; focus on commits touching: path normalization, `RtlDosPathNameToNtPathName`, `GetModuleFileName`, `ExpandEnvironmentStrings`, `GetFullPathName`, msvcrt string/`_mbs*`/`wcs*` length funcs, or the behavior/file loader path building.
-3. Map the SkyrimSE.exe RVAs above to function names using the **Address Library for SKSE Plugins (1.6.1179)** + a crashlog decoder, to learn exactly which engine routine builds this path (frame 2 = `SkyrimSE.exe+0xd11393`).
-4. Repro is reliable: vanilla GOG AE, New Game, Wine ≥7.7.
+So the practical, verified fix is to **make the install prefix short** — symlink the game to
+`C:\Skyrim` and launch from there. The absolute path then fits in 116 bytes and `strcat_s` succeeds.
+No Wine rebuild, native UCRT, or codepage change is needed (all were tried; only the short path
+fixed it).
+
+## Why Wine-specific (context, not required for the fix)
+The same symptom class is documented as a Wine 7.6→7.7 regression ([WineHQ forum t=36530](https://forum.winehq.org/viewtopic.php?t=36530),
+"Skyrim SE 7.{7,8} → 7.6 Reversion"); the secure-CRT string functions were reworked across
+[7.7](https://github.com/wine-mirror/wine/blob/wine-7.7/ANNOUNCE)→[7.12](https://github.com/wine-mirror/wine/blob/wine-7.12/ANNOUNCE)→[7.20](https://github.com/wine-mirror/wine/blob/wine-7.20/ANNOUNCE). We
+initially pursued a Wine-bug bisect down this path — but it proved unnecessary: the buffer-size
+interaction with the install-path length is the real lever, and the short-path workaround is simpler
+and version-independent. (Codepage experiments — `ACP=1252`, `LC_ALL=C` — were ruled out along the way.)
+
+## Reproduction
+Vanilla GOG Skyrim AE, New Game, Wine ≥ 7.7, with a long install path. Fixes with a short install path.
