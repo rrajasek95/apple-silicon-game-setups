@@ -1,0 +1,71 @@
+diff --git a/src/d3d11/d3d11.cpp b/src/d3d11/d3d11.cpp
+index c20449c..1236a3f 100644
+--- a/src/d3d11/d3d11.cpp
++++ b/src/d3d11/d3d11.cpp
+@@ -25,6 +25,7 @@
+ #include "util_string.hpp"
+ #include "dxmt_capture.hpp"
+ #include <exception>
++#include <typeinfo>
+ 
+ namespace dxmt {
+ Logger Logger::s_instance("d3d11.log");
+@@ -248,6 +249,24 @@ extern "C" void _massert(const char *_Message, const char *_File,
+ }
+ 
+ extern "C" void __cxa_pure_virtual() {
+-  dxmt::Logger::err(dxmt::str::format("Pure virtual function called"));
++  // DXMT-POC instrumentation: capture `this` (Win64 ABI -> rcx) and read the
++  // Itanium RTTI (vtable[-1] -> type_info) to name the object whose interface
++  // method is unimplemented, before trapping.
++  void *self;
++  __asm__ volatile("movq %%rcx, %0" : "=r"(self));
++  void *caller = __builtin_return_address(0);
++  const char *tname = "<unknown>";
++  if (self) {
++    void **vt = *reinterpret_cast<void ***>(self);
++    if (vt) {
++      const std::type_info *ti =
++          *(reinterpret_cast<const std::type_info *const *>(vt) - 1);
++      if (ti && ti->name())
++        tname = ti->name();
++    }
++  }
++  dxmt::Logger::err(dxmt::str::format(
++      "Pure virtual function called: type=", tname, " this=", self,
++      " caller=", caller));
+   __builtin_trap();
+ }
+\ No newline at end of file
+diff --git a/src/d3d11/d3d11_resource.hpp b/src/d3d11/d3d11_resource.hpp
+index 80927e5..cbe5bff 100644
+--- a/src/d3d11/d3d11_resource.hpp
++++ b/src/d3d11/d3d11_resource.hpp
+@@ -8,6 +8,7 @@
+ #include "com/com_guid.hpp"
+ #include "d3d11_view.hpp"
+ #include "dxgi_resource.hpp"
++#include "dxmt_poc_defer.hpp"
+ #include "log/log.hpp"
+ #include "../d3d10/d3d10_buffer.hpp"
+ #include "../d3d10/d3d10_texture.hpp"
+@@ -190,6 +191,10 @@ public:
+       d3d10(reinterpret_cast<tag::COM *>(this), device->GetImmediateContextPrivate()) {
+     // D3D11ResourceCommonß::bind_flags_
+     this->bind_flags_ = desc.BindFlags;
++    // DXMT-POC: lifetime-extension workaround (leak) — keeps the resource alive
++    // so a reference-stealing app's over-release lands on valid memory. NOT a
++    // real fix; masks the under-count. Used here so the game stays runnable.
++    this->AddRefPrivate();
+   }
+ 
+   template <std::size_t n> HRESULT ResolveBase(REFIID riid, void **ppvObject) {
+@@ -388,6 +393,8 @@ public:
+     }
+     this->resource_ = pResource;
+     this->bind_flags_ = this->resource_->bind_flags_;
++    // DXMT-POC: same lifetime-extension workaround for views (see TResourceBase).
++    this->AddRefPrivate();
+   }
+ 
+   template <std::size_t n> HRESULT ResolveBase(REFIID riid, void **ppvObject) {

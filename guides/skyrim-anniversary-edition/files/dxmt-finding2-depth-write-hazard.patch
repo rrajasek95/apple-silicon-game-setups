@@ -1,0 +1,32 @@
+diff --git a/src/d3d11/d3d11_context_impl.cpp b/src/d3d11/d3d11_context_impl.cpp
+index 6d35952..5912dcb 100644
+--- a/src/d3d11/d3d11_context_impl.cpp
++++ b/src/d3d11/d3d11_context_impl.cpp
+@@ -4502,10 +4502,16 @@ public:
+         };
+ 
+         if (dsv.Texture.ptr()) {
+-          auto access_flag = ResourceAccess::Read;
+-          // TODO: ...should know more about store behavior (e.g. DiscardView)
++          // DXMT-POC: a writable depth/stencil plane must be registered as a
++          // WRITE so the hazard tracker synchronizes later samples (e.g. shadow
++          // maps read as SRVs) against this pass's writes. Previously hardcoded
++          // ResourceAccess::Read, so shadow-map writes were untracked -> the
++          // sampling pass read stale depth -> frozen/flickering shadows.
++          // readonly_flags_ bit0 = D3D11_DSV_READ_ONLY_DEPTH, bit1 = stencil.
+           if (dsv_planar_flags & 1) {
+             auto &depth = info.depth;
++            auto access_flag = (dsv.ReadOnlyFlags & 0x1) ? ResourceAccess::Read
++                                                         : ResourceAccess::ReadWrite;
+             depth.attachment = ctx.access<PipelineStage::Pixel>(dsv.Texture, dsv.viewId, access_flag);
+             depth.load_action = WMTLoadActionLoad;
+             depth.store_action = WMTStoreActionStore;
+@@ -4513,6 +4519,8 @@ public:
+ 
+           if (dsv_planar_flags & 2) {
+             auto &stencil = info.stencil;
++            auto access_flag = (dsv.ReadOnlyFlags & 0x2) ? ResourceAccess::Read
++                                                         : ResourceAccess::ReadWrite;
+             stencil.attachment = ctx.access<PipelineStage::Pixel>(dsv.Texture, dsv.viewId, access_flag);
+             stencil.load_action = WMTLoadActionLoad;
+             stencil.store_action = WMTStoreActionStore;

@@ -1,80 +1,142 @@
-# DXMT v2 — investigation & the exact blocker (open)
+# DXMT v2 — investigation: from "blocked" to a validated architecture (still one DXMT bug short)
 
-Status: **spike, blocked at the final step.** This documents an attempt to replace the graphics stack
-(patched DXVK + MoltenVK, two hops: D3D11→Vulkan→Metal) with **[DXMT](https://github.com/3Shain/dxmt)**
-— a one-hop **D3D11→Metal** translator — on the *free* Gcenx-lineage Wine, with no CrossOver.
+Status: **the hard architectural problem is solved; the remaining blocker is a bug inside DXMT, not in
+our stack.** This documents replacing the graphics stack (patched DXVK + MoltenVK, two hops:
+D3D11→Vulkan→Metal) with **[DXMT](https://github.com/3Shain/dxmt)** — a one-hop **D3D11→Metal**
+translator — on **free, from-source CrossOver Wine**, with no commercial CrossOver.
 
-**Outcome:** DXMT loads and **creates a Direct3D 11 device at `FEATURE_LEVEL_11_0`** on a self-built,
-patched Wine — proving the approach is viable. It then fails at one specific call (creating the Metal
-view) due to a Wine-internal symbol-visibility difference between upstream Wine and CrossOver. That last
-hurdle is **not yet solved.** The working guide ([README](README.md)) still uses DXVK + MoltenVK.
+**Bottom line:**
+- ✅ Built **CrossOver-26 Wine (Wine 11.0 base) from source** on macOS 26 / Apple Silicon.
+- ✅ DXMT loads on it and drives **D3D11 device @ FL11_0 → Metal swapchain (a real `CAMetalLayer`
+  window) → first pipeline (PSO) compilation.** The symbol-visibility wall that defeated every
+  upstream-Wine attempt is **gone.**
+- ❌ Skyrim then crashes with **"Pure virtual function called"** — DXMT returns an
+  **incompletely-constructed D3D11 COM object** during engine init, and Skyrim's cleanup `Release()`s it.
+  Present in **both DXMT v0.80 and the latest dev build (Jun 2026)**. This is a DXMT bug.
 
-## Why DXMT
-- One translation hop instead of two; talks to Metal natively → no MoltenVK, and **no DXVK feature patch**
-  (DXMT doesn't hit MoltenVK's missing-Vulkan-features problem at all).
-- Actively developed (v0.80, Apr 2026), shipped as an option in CrossOver 25/26. Skyrim is pure D3D11 —
-  squarely in scope.
+The shipping guide ([README](README.md)) still uses the rock-solid DXVK + MoltenVK path.
 
-## The catch DXMT documents
-DXMT's `winemetal.so` resolves Wine's Metal-view functions from `winemac.drv` — functions that exist in
-Wine but are compiled **hidden** (`-fvisibility=hidden`). DXMT is built against **CrossOver Wine 24+**
-(or a self-built Wine ≥8 with those symbols exposed). So the prerequisite is a Wine that exports them.
+---
 
-## What was built (reproducible, and it works to device creation)
-1. **Built Wine 11.10 from source** with a patch exposing the `winemac.drv` Metal symbols
-   ([`files/wine-11.10-dxmt-winemac-export.patch`](files/wine-11.10-dxmt-winemac-export.patch)):
-   - `visibility("default")` on the 8 functions DXMT needs (`macdrv_create_metal_device`,
-     `macdrv_view_create_metal_view`, `macdrv_view_get_metal_layer`, `get_win_data`, …).
-   - a CrossOver-compatible global **`macdrv_functions`** struct (DXMT's preferred resolution target).
-   - **Build note:** the host compiler defaults to **arm64**, but DXMT v0.80 ships an **x86_64**
-     `winemetal.so` (the traditional x86_64-under-Rosetta layout). You must build **x86_64** Wine
-     (`arch -x86_64 ./configure … --enable-archs=x86_64`, `--without-freetype` etc. are fine if you
-     only need `winemac.so` to graft). An arm64 Wine will not host DXMT's x86_64 components.
-2. **Grafted** the patched x86_64 `winemac.so` into a copy of the Gcenx Wine 11.10 (the rest of Wine
-   stays Gcenx's, so it's known-good for Skyrim's engine).
-3. **Installed DXMT v0.80** (`dxmt-*-builtin.tar.gz`): `winemetal.so` → `lib/wine/x86_64-unix/`;
-   `d3d11.dll`, `dxgi.dll`, `d3d10core.dll`, `winemetal.dll` → both `lib/wine/x86_64-windows/` and the
-   prefix `system32`. Set those four DLL overrides to **`builtin`** (critical — `winemetal` only loads
-   its unixlib when loaded as builtin; `native` fails with err 126).
-4. Reused everything graphics-independent from the main guide (short path, native MF/XAudio2 audio).
+## Part 1 — Why the upstream-Wine approach was a dead end (solved by switching Wine)
 
-**Result:** DXMT's `SkyrimSE_d3d11.log` reports:
+DXMT's `winemetal.so` resolves Wine's Metal-view functions from `winemac.drv` via
+`dlsym(RTLD_DEFAULT, "macdrv_functions")`. On a self-built **upstream** Wine 11.10 — even with the
+symbols exported and a hand-written `macdrv_functions` struct — that `dlsym` returns **NULL** from
+`winemetal.so`, although `winemac.so` exports it and resolves it from its *own* context.
+
+Ruled out with evidence: the `dlopen` flags (CrossOver uses the **same** `RTLD_NOW` — confirmed by
+diffing `dlopen_dll` in both sources), `RTLD_GLOBAL`/scope (a standalone macOS test showed cross-image
+`dlsym` works without it), the missing struct, and self-promotion (`RTLD_NOLOAD` doesn't promote on
+macOS). The difference is **diffuse**, woven through CrossOver's wider Wine fork — not a liftable
+one-liner. So we stopped trying to patch upstream Wine and **built CrossOver's Wine instead.**
+
+### Confirmed by reading CrossOver's source
+CrossOver defines `macdrv_functions` in a proprietary **`dlls/winemac.drv/d3dmetal.c`** (the Wine-side
+hooks D3DMetal uses — *not* D3DMetal itself), exported `DECLSPEC_EXPORT`, as a **24-field / 192-byte**
+struct. DXMT reads the first 10 fields (`get_win_data`, `macdrv_create_metal_device`,
+`macdrv_view_create_metal_view`, …). Crucially **`d3dmetal.c` includes only standard Wine headers** —
+no Apple `D3DMetal.framework` dependency — so it builds in a plain Wine tree.
+
+---
+
+## Part 2 — Building CrossOver-26 Wine from source (reproducible)
+
+Sources: `https://media.codeweavers.com/pub/crossover/source/crossover-sources-26.0.0.tar.gz`
+(Wine 11.0 base; the Wine tree is under `sources/wine/`, with `configure` already generated).
+
+**Architecture decisions (and why):**
+- **x86_64** under Rosetta — DXMT v0.80 ships only an x86_64 `winemetal.so`; SkyrimSE.exe is x86_64 PE.
+- **WoW64 single-binary** (`--enable-archs=x86_64`).
+- **Whole, consistent fork** — the symbol visibility is diffuse, so build all of CrossOver's Wine so it
+  "just works" rather than grafting pieces.
+- Deps from **x86_64 Homebrew** (`/usr/local`): freetype (the thing that blocked the upstream x86_64
+  build is just-works here), bison, mingw-w64, SDL2. Skip Vulkan/MoltenVK (DXMT→Metal direct) and
+  gstreamer (native Media Foundation).
+
+```sh
+# x86_64 Homebrew deps already present at /usr/local: freetype, bison, mingw-w64, sdl2
+arch -x86_64 /bin/bash -c '
+  export PATH=/usr/local/opt/bison/bin:/usr/local/bin:/usr/bin:/bin
+  export PKG_CONFIG_PATH=/usr/local/opt/freetype/lib/pkgconfig:/usr/local/opt/sdl2-compat/lib/pkgconfig
+  export CPPFLAGS=-I/usr/local/include LDFLAGS=-L/usr/local/lib
+  mkdir build && cd build
+  ../sources/wine/configure --enable-archs=x86_64 --disable-tests --without-gstreamer
+  nice -n 5 make -j6     # ~11k files, x86_64 under Rosetta; -j6 keeps peak RAM ~18GB (48GB box)
+'
 ```
-info:  Maximum supported feature level: D3D_FEATURE_LEVEL_11_1
+
+**One source patch needed** (`win32u/vulkan.c`): CrossOver's `win32u/vulkan.c` references
+`SONAME_LIBVULKAN` unconditionally, which `--without-vulkan` leaves undefined. Add a fallback so it
+compiles (the path is never exercised by DXMT):
+```c
+#ifndef SONAME_LIBVULKAN
+#define SONAME_LIBVULKAN "libvulkan.1.dylib"
+#endif
+```
+Then `make install DESTDIR=~/cx-wine`. Result: `winemac.so` **exports `macdrv_functions`** (from
+`d3dmetal.c`) — verify with `nm -gU .../x86_64-unix/winemac.so | grep macdrv_functions`.
+
+**Install DXMT** into the CrossOver Wine (builtin layout): `winemetal.so` → `lib/wine/x86_64-unix/`;
+`d3d11/dxgi/d3d10core/winemetal/nvapi64.dll` → `lib/wine/x86_64-windows/` (+ prefix `system32` as
+locators), overrides = **`builtin`**. Runtime: put freetype on the dyld path
+(`DYLD_FALLBACK_LIBRARY_PATH=/usr/local/opt/freetype/lib:/usr/local/lib:/usr/lib`) or Wine reports
+"cannot find the FreeType font library." A prefix made by another Wine triggers one `wineboot --init`
+on first run — let it finish, then relaunch.
+
+---
+
+## Part 3 — How far DXMT gets, and the exact failure (DXVK side-by-side)
+
+Same Mac, same Skyrim AE, same prefix. DXVK is the known-good reference (reaches gameplay).
+
+| Stage | DXVK (D3D11→Vulkan→Metal) | DXMT (D3D11→Metal) |
+|---|---|---|
+| D3D11 device @ `FL11_0` | ✅ | ✅ |
+| Swapchain / `CAMetalLayer` | ✅ 3 images @ 1734×1080 | ✅ (black window appears) |
+| 1st pipeline (PSO) compile | ✅ | ✅ `Compiled 1 PSO` |
+| 2nd pipeline + continued engine init | ✅ compiles ≥2, **runs to menu** | ❌ **crash** |
+| `Pure virtual function called` | 0 | 1 |
+
+**The crash, precisely.** DXMT's own trace ends:
+```
 info:  Using feature level D3D_FEATURE_LEVEL_11_0
-err:   Failed to create metal view, it seems like your Wine has no exported symbols needed by DXMT.
+warn:  MakeWindowAssociation: Ignoring flags 3
+trace: Start compiling 1 PSO
+trace: Compiled 1 PSO
+err:   Pure virtual function called
 ```
+Backtrace at the abort (CrossOver Wine + DXMT):
+```
+=>0  d3d11 (+0x1e4fd)   ud2            ; preceded by `call _ZdlPvy` (operator delete) — object teardown
+  1  skyrimse (+0xe4b47c)              ; call *0x10(%rax)  → COM vtable index 2 = Release()
+  2..5 skyrimse (engine-init cleanup chain)
+  6  kernel32 / 7 ntdll (thread start)
+```
+`skyrimse+0xe4b47c` is the **same engine-init cleanup function** (`+0xE4B479`) that the Wine-7.7 bug
+also crashed in — Skyrim's error/teardown path. It `Release()`s a D3D11 object whose COM vtable slot 2
+is still the **pure-virtual stub**: DXMT handed back a **half-constructed object** right after the first
+pipeline. DXVK constructs that same object fully and continues. So *what's incomplete in DXMT* is a
+**D3D11 object-lifecycle bug**, not anything in our Wine/MoltenVK/audio stack.
 
-## The blocker (precisely characterized)
-DXMT resolves the Metal-view API via **`dlsym(RTLD_DEFAULT, "macdrv_functions")`** (then a fallback to
-individual `dlsym`s) from inside `winemetal.so`. On this Wine that returns **NULL**, even though the
-symbols are correctly exported by the grafted `winemac.so` and the module is loaded.
+This reproduces on **both** DXMT v0.80 and the latest CI dev build (commit `06065754`, 2026-06-20,
+which adds `IMTLSwapChainFactory` / `IDXGISurface` work — close to this area but not a fix). Skyrim is
+not on DXMT's tested-games list, so this is likely first-discovery territory.
 
-Evidence gathered (symptom → cause → ruled-out):
-- The symbols **are** exported (`nm -gU winemac.so` shows all 8 + `macdrv_functions`).
-- `winemac.so` **is** loaded, and from **its own** context the symbol resolves — an instrumented
-  constructor in `winemac.so` saw `dlsym(RTLD_DEFAULT,"macdrv_functions") != NULL` (`before=1`).
-- From **`winemetal.so`** (a *separate* unixlib), the same `dlsym` returns NULL.
-- **Ruled out — `RTLD_GLOBAL`/scope:** a standalone macOS test proved a `dlopen`'d library's symbols are
-  visible to `dlsym(RTLD_DEFAULT)` from a *separate* image **without** `RTLD_GLOBAL`. Wine `dlopen`s its
-  unixlibs `RTLD_NOW`, which the test shows is sufficient — so the dlopen flags are not the cause.
-- **Ruled out — missing struct:** adding the CrossOver-style `macdrv_functions` struct didn't change it.
-- **Ruled out — self-promotion:** a `dlopen(self, RTLD_GLOBAL|RTLD_NOLOAD)` constructor doesn't help —
-  macOS `RTLD_NOLOAD` does not promote an already-loaded image's scope.
+---
 
-**Conclusion:** under upstream Wine-WoW64, DXMT's `winemetal.so` and Wine's `winemac.so` end up in
-**separate symbol-resolution contexts**, so cross-module `dlsym(RTLD_DEFAULT)` fails. CrossOver's Wine
-keeps them mutually visible (which is why DXMT works there). The difference is in *how CrossOver loads
-unixlibs*, not in a flag or a missing symbol — so it can't be fixed from `winemac.drv` alone.
+## Where it goes from here
+- **Report upstream to DXMT** — this is their bug, with a concrete repro: device + swapchain + 1 PSO
+  succeed, then a pure-virtual `Release` on a half-built D3D11 object during Skyrim AE engine init
+  (backtrace above). The DXVK side-by-side pins the divergence to the object created right after the
+  first pipeline.
+- **Bank the architecture** — `~/cx-wine` is a working free CrossOver-26 Wine that hosts DXMT to an
+  on-screen swapchain; when DXMT closes this gap it should "just work." Keep playing on DXVK meanwhile.
+- **Off the free track:** commercial CrossOver 25/26 exposes DXMT as a one-click Graphics option.
 
-## Where it could go from here
-- **Most realistic:** build/obtain a **FOSS CrossOver-sources Wine 24+** (DXMT's reference target) and
-  drop DXMT in — skip the upstream-Wine fight entirely.
-- **Deep path:** reverse-engineer CrossOver's unixlib loading and replicate it in upstream Wine's
-  `ntdll` unix loader (so unixlibs share a symbol context). Uncertain, and a full Wine rebuild.
-- **Off the free track:** CrossOver 25/26 exposes DXMT as a one-click Graphics option.
-
-## Files
+## Files / artifacts
 - [`files/wine-11.10-dxmt-winemac-export.patch`](files/wine-11.10-dxmt-winemac-export.patch) — the
-  `winemac.drv` symbol-exposure + `macdrv_functions` patch (correct and reusable; the remaining blocker
-  is in Wine's loader, not this patch).
+  upstream-Wine symbol-exposure patch (historical; superseded by building CrossOver Wine, where
+  `d3dmetal.c` already exports `macdrv_functions`).
+- Local build tree `~/cx-wine-build` (CrossOver-26 source + `build/`), installed Wine `~/cx-wine`,
+  test prefix `~/dxmt-skyrim-prefix`, latest DXMT dev build under `/tmp/dxmt-new`.
