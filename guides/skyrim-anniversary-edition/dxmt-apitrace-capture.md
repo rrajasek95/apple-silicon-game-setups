@@ -57,9 +57,8 @@ artifact to lead with; the analysis is supporting context, not a proposed fix).
 share via a file host). DXMT traced: **0.80 release** (verified to reproduce identically to the dev
 commit `v0.80-27-g0606575`, so the crash is not a dev-build artifact).
 
-> **Hand-rolled-Wine install note (not a confounder — a requirement).** On a from-source Wine there is
-> no CrossOver installer to register DXMT's non-standard DLLs as builtins, so DXMT's `d3d11.dll`/`dxgi.dll`
-> must be present as **native files in `system32`** for the game to find them at all. With `lib/wine`
-> only, Skyrim aborts immediately with `err:module:import_dll ... d3d11.dll ... not found` →
-> `loader_init ... c0000135`. So the `system32` copies are the hand-rolled equivalent of CrossOver's
-> integration step, not a deviation introduced by tracing.
+> **Install note (this is the guide's non-builtin mode).** DXMT's `d3d11`/`dxgi`/`d3d10core` live as
+> native files in `system32` (with `winemetal` builtin, override `WINEDLLOVERRIDES="dxgi,d3d11,d3d10core=n,b"`)
+> — DXMT's own [non-builtin install](dxmt/03-install-dxmt.md), not a tracing deviation. The guide's
+> builtin (`lib/wine`-only) mode needs a `d3d11` builtin/fakedll, which a Wine built `--without-vulkan`
+> (no wined3d) doesn't have — there `lib/wine`-only aborts with `c0000135` (`d3d11.dll` not found).
