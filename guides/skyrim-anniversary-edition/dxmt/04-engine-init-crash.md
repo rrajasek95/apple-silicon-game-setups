@@ -52,4 +52,11 @@ EXCEPTION_ILLEGAL_INSTRUCTION (0xC000001D)  — DXMT __builtin_trap
 - **DXMT:** the dual refcount in `ComObject` (`src/util/com/com_object.hpp`) and the resource's `Release`/`ReleasePrivate` — the object is freed when `m_refPrivate` hits 0.
 - **Skyrim:** engine-init teardown releases a stored D3D11 resource once more than it AddRef'd; DXMT had already freed it.
 
+## Bypass (workaround, not a fix)
+
+A protective internal reference on every resource/view
+([refcount-workaround.patch](refcount-workaround.patch)) keeps the object alive past the engine's
+over-release, so the game runs to gameplay. It's a deliberate leak — it confirms the diagnosis, it is
+not the fix.
+
 Detail: [dxmt-skyrim-findings.md](../dxmt-skyrim-findings.md).

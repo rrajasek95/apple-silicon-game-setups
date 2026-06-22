@@ -1,0 +1,24 @@
+diff --git a/src/d3d11/d3d11_resource.hpp b/src/d3d11/d3d11_resource.hpp
+index 80927e5..1a8b9f4 100644
+--- a/src/d3d11/d3d11_resource.hpp
++++ b/src/d3d11/d3d11_resource.hpp
+@@ -190,6 +190,10 @@ public:
+       d3d10(reinterpret_cast<tag::COM *>(this), device->GetImmediateContextPrivate()) {
+     // D3D11ResourceCommonß::bind_flags_
+     this->bind_flags_ = desc.BindFlags;
++    // DXMT-POC: lifetime-extension workaround (leak) — keeps the resource alive
++    // so a reference-stealing app's over-release lands on valid memory. NOT a
++    // real fix; masks the under-count. Used here so the game stays runnable.
++    this->AddRefPrivate();
+   }
+ 
+   template <std::size_t n> HRESULT ResolveBase(REFIID riid, void **ppvObject) {
+@@ -388,6 +392,8 @@ public:
+     }
+     this->resource_ = pResource;
+     this->bind_flags_ = this->resource_->bind_flags_;
++    // DXMT-POC: same lifetime-extension workaround for views (see TResourceBase).
++    this->AddRefPrivate();
+   }
+ 
+   template <std::size_t n> HRESULT ResolveBase(REFIID riid, void **ppvObject) {
